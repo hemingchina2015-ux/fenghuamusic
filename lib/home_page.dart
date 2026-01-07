@@ -1,8 +1,7 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
 import 'models/song_model.dart';
 import 'services/music_service.dart';
+import 'services/player_controller.dart'; // 引入新控制器
 import 'widgets/mini_player.dart';
 import 'widgets/side_drawer.dart';
 
@@ -14,14 +13,9 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late AudioPlayer _player;
   final TextEditingController _searchController = TextEditingController();
   List<SongModel> _songs = [];
-  SongModel? _currentSong;
-
   bool _isSearching = false;
-  bool _isPlayerLoading = false;
-  bool _isPlayerInitialized = false;
 
   @override
   void initState() {
@@ -29,30 +23,12 @@ class _HomePageState extends State<HomePage> {
     _initApp();
   }
 
-  // 初始化应用：初始化服务 -> 设置播放器 -> 加载默认列表（收藏）
   Future<void> _initApp() async {
+    // 1. 初始化服务和播放器控制器
     await MusicService.init();
-    _initAudioPlayer();
-    _loadFavorites(); // 1. 软件开启后加载收藏列表
-  }
-
-  void _initAudioPlayer() {
-    try {
-      _player = AudioPlayer();
-
-      // 监听播放完成，自动下一首
-      _player.processingStateStream.listen((state) {
-        if (state == ProcessingState.completed) {
-          _playNext();
-        }
-      });
-
-      setState(() {
-        _isPlayerInitialized = true;
-      });
-    } catch (e) {
-      debugPrint("播放器初始化失败: $e");
-    }
+    playerController.init();
+    // 2. 软件开启后自动加载收藏列表
+    _loadFavorites();
   }
 
   // 加载收藏夹内容
@@ -81,59 +57,18 @@ class _HomePageState extends State<HomePage> {
       });
     } catch (e) {
       setState(() => _isSearching = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("搜索失败: $e")));
+      _showError("搜索失败，请检查网络或API状态");
     }
   }
 
-  // 核心修改：点击播放逻辑
-  Future<void> _playSong(SongModel song) async {
-    // 2. 立即显示播放条：先更新当前歌曲信息，让 UI 弹出来
-    setState(() {
-      _currentSong = song;
-      _isPlayerLoading = true;
-    });
-
-    try {
-      // 异步获取音频地址（下载/解析）
-      String? url = await MusicService.getAudioUrl(song.source, song.songId);
-
-      if (url != null && url.isNotEmpty) {
-        await _player.setUrl(url);
-        _player.play();
-      } else {
-        throw Exception("无法获取播放地址");
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("播放失败: 歌曲可能无法下载或无版权")));
-    } finally {
-      if (mounted) {
-        setState(() => _isPlayerLoading = false);
-      }
-    }
-  }
-
-  // 3. 统一的切歌逻辑
-  void _playNext() {
-    if (_songs.isEmpty || _currentSong == null) return;
-    int index = _songs.indexWhere((s) => s.songId == _currentSong!.songId);
-    int nextIndex = (index + 1) % _songs.length;
-    _playSong(_songs[nextIndex]);
-  }
-
-  void _playPrevious() {
-    if (_songs.isEmpty || _currentSong == null) return;
-    int index = _songs.indexWhere((s) => s.songId == _currentSong!.songId);
-    int prevIndex = (index - 1 + _songs.length) % _songs.length;
-    _playSong(_songs[prevIndex]);
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
   }
 
   @override
   void dispose() {
-    _player.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -143,15 +78,13 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: const Text("风华音乐"),
+        title: const Text(
+          "风华音乐",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.favorite_border),
-            onPressed: _loadFavorites,
-          ),
-        ],
+        // 修正：删除了右上角多余的红心按钮，保持简洁
       ),
       drawer: SideDrawer(onShowFavorites: _loadFavorites),
       body: Column(
@@ -183,56 +116,104 @@ class _HomePageState extends State<HomePage> {
           Expanded(
             child: _isSearching
                 ? const Center(child: CircularProgressIndicator())
-                : ListView.builder(
-                    itemCount: _songs.length,
-                    itemBuilder: (context, index) {
-                      final song = _songs[index];
-                      bool isPlaying = _currentSong?.songId == song.songId;
-                      return ListTile(
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: Image.network(
-                            song.cover,
-                            width: 50,
-                            height: 50,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, _, __) => Container(
-                              color: Colors.grey,
-                              width: 50,
-                              height: 50,
+                : ValueListenableBuilder<SongModel?>(
+                    valueListenable: playerController.currentSongNotifier,
+                    builder: (context, currentSong, _) {
+                      return ListView.builder(
+                        itemCount: _songs.length,
+                        itemBuilder: (context, index) {
+                          final song = _songs[index];
+                          bool isPlaying = currentSong?.songId == song.songId;
+                          return ListTile(
+                            leading: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(
+                                    song.cover,
+                                    width: 50,
+                                    height: 50,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, _, __) => Container(
+                                      color: Colors.white10,
+                                      width: 50,
+                                      height: 50,
+                                      child: const Icon(
+                                        Icons.music_note,
+                                        color: Colors.white30,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                if (isPlaying)
+                                  Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black38,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.equalizer,
+                                      color: Colors.blueAccent,
+                                    ),
+                                  ),
+                              ],
                             ),
-                          ),
-                        ),
-                        title: Text(
-                          song.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: isPlaying ? Colors.blueAccent : Colors.white,
-                          ),
-                        ),
-                        subtitle: Text(
-                          song.artist,
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                        onTap: () => _playSong(song),
+                            title: Text(
+                              song.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: isPlaying
+                                    ? Colors.blueAccent
+                                    : Colors.white,
+                                fontWeight: isPlaying
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                            subtitle: Text(
+                              song.artist,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                            onTap: () async {
+                              try {
+                                await playerController.playSong(song, _songs);
+                              } catch (e) {
+                                _showError("播放失败：歌曲可能暂不可用");
+                              }
+                            },
+                          );
+                        },
                       );
                     },
                   ),
           ),
         ],
       ),
-      // 迷你播放条
-      bottomNavigationBar: SafeArea(
-        child: (_isPlayerInitialized && _currentSong != null)
-            ? MiniPlayer(
-                player: _player,
-                currentSong: _currentSong,
-                isLoading: _isPlayerLoading,
-                onNext: _playNext,
-                onPrevious: _playPrevious,
-              )
-            : const SizedBox.shrink(),
+      // 迷你播放条：监听控制器的当前歌曲变化
+      bottomNavigationBar: ValueListenableBuilder<SongModel?>(
+        valueListenable: playerController.currentSongNotifier,
+        builder: (context, currentSong, _) {
+          if (currentSong == null) return const SizedBox.shrink();
+          return SafeArea(
+            child: ValueListenableBuilder<bool>(
+              valueListenable: playerController.isLoadingNotifier,
+              builder: (context, isLoading, _) {
+                return MiniPlayer(
+                  player: playerController.player,
+                  currentSong: currentSong,
+                  isLoading: isLoading,
+                );
+              },
+            ),
+          );
+        },
       ),
     );
   }

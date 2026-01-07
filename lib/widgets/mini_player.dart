@@ -2,41 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/song_model.dart';
 import '../player_detail_page.dart';
-import 'player_buttons.dart'; // 引入封装的按钮组件
+import '../services/player_controller.dart';
+import 'player_buttons.dart';
 
 class MiniPlayer extends StatelessWidget {
   final AudioPlayer player;
-  final SongModel? currentSong;
+  final SongModel currentSong;
   final bool isLoading;
-  final VoidCallback? onNext;
-  final VoidCallback? onPrevious;
 
   const MiniPlayer({
     super.key,
     required this.player,
-    this.currentSong,
+    required this.currentSong,
     required this.isLoading,
-    this.onNext,
-    this.onPrevious,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (currentSong == null) return const SizedBox.shrink();
-
     return GestureDetector(
       onTap: () {
         // 点击迷你播放条进入详情页
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => PlayerDetailPage(
-              player: player,
-              song: currentSong!,
-              // 关键：将切歌逻辑也传给详情页，保证详情页切歌也有效
-              onNext: onNext,
-              onPrevious: onPrevious,
-            ),
+            builder: (context) =>
+                PlayerDetailPage(player: player, song: currentSong),
           ),
         );
       },
@@ -62,15 +52,15 @@ class MiniPlayer extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Image.network(
-                  currentSong!.cover,
-                  width: 54,
-                  height: 54,
+                  currentSong.cover,
+                  width: 52,
+                  height: 52,
                   fit: BoxFit.cover,
                   errorBuilder: (context, _, __) => Container(
-                    color: Colors.grey,
-                    width: 54,
-                    height: 54,
-                    child: const Icon(Icons.music_note),
+                    color: Colors.white10,
+                    width: 52,
+                    height: 52,
+                    child: const Icon(Icons.music_note, color: Colors.white30),
                   ),
                 ),
               ),
@@ -83,16 +73,18 @@ class MiniPlayer extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    currentSong!.title,
+                    currentSong.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
+                      color: Colors.white,
                     ),
                   ),
+                  const SizedBox(height: 2),
                   Text(
-                    currentSong!.artist,
+                    currentSong.artist,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -102,27 +94,27 @@ class MiniPlayer extends StatelessWidget {
             ),
 
             // 3. 收藏按钮 (复用组件)
-            FavoriteButton(song: currentSong!),
+            FavoriteButton(song: currentSong),
 
-            // 4. 控制按钮组
+            // 4. 控制按钮组 (修正顺序：上一首 -> 播放/暂停 -> 下一首)
             // 上一首
             ControlButton(
               icon: Icons.skip_previous_rounded,
-              onTap: onPrevious,
+              onTap: () => playerController.playPrevious(), // 直接调用控制器
               size: 28,
             ),
 
-            // 播放/暂停/加载 (复用组件，自动处理加载状态)
+            // 播放/暂停/加载
             PlayPauseButton(player: player, isLoading: isLoading, size: 32),
 
             // 下一首
             ControlButton(
               icon: Icons.skip_next_rounded,
-              onTap: onNext,
+              onTap: () => playerController.playNext(), // 直接调用控制器
               size: 28,
             ),
 
-            // 播放模式切换 (复用组件)
+            // 播放模式切换
             PlayModeButton(player: player),
 
             const SizedBox(width: 5),
