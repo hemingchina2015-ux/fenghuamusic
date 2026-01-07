@@ -45,7 +45,8 @@ class SongModel {
     // 保留你的逻辑：处理封面图逻辑
     String albumId = item['ALBUMID']?.toString() ?? "";
     String coverUrl = "https://img1.kuwo.cn/star/albumcover/500/default.jpg";
-    if (albumId.isNotEmpty && albumId != "0") {
+    // 只有当 albumId 看起来合法时才拼接
+    if (albumId.isNotEmpty && albumId != "0" && albumId != "null") {
       coverUrl = "http://img1.kuwo.cn/star/albumcover/500/$albumId.jpg";
     }
 

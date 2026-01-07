@@ -75,12 +75,15 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
           ),
           body: Stack(
             children: [
-              // 1. 背景高斯模糊
+              // 1. 背景高斯模糊 (增加错误处理)
               Container(
                 decoration: BoxDecoration(
                   image: DecorationImage(
                     image: NetworkImage(displaySong.cover),
                     fit: BoxFit.cover,
+                    onError: (exception, stackTrace) {
+                      debugPrint("📸 背景图加载失败");
+                    },
                   ),
                 ),
                 child: BackdropFilter(
@@ -215,6 +218,7 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
     );
   }
 
+  // 💡 修改后的旋转封面方法，增加了加载中和错误处理逻辑
   Widget _buildRotatingCover(String url) {
     return Center(
       child: RotationTransition(
@@ -225,8 +229,49 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white10, width: 8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                spreadRadius: 5,
+              ),
+            ],
           ),
-          child: ClipOval(child: Image.network(url, fit: BoxFit.cover)),
+          child: ClipOval(
+            child: Image.network(
+              url,
+              fit: BoxFit.cover,
+              // 加载中的占位：显示一个转圈的进度条
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return Center(
+                  child: CircularProgressIndicator(
+                    value: loadingProgress.expectedTotalBytes != null
+                        ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                        : null,
+                    color: Colors.white70,
+                  ),
+                );
+              },
+              // 错误处理：当图片 404 时显示 assets 里的默认图
+              errorBuilder: (context, error, stackTrace) {
+                return Image.asset(
+                  'assets/images/default_cover.jpg',
+                  fit: BoxFit.cover,
+                  // 如果 assets 图片还没加，作为最后保底，显示一个带背景色的图标
+                  errorBuilder: (context, err, stack) => Container(
+                    color: Colors.blueGrey[800],
+                    child: const Icon(
+                      Icons.music_note,
+                      color: Colors.white,
+                      size: 80,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
@@ -251,7 +296,7 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
   }
 }
 
-// 自定义歌词样式，继承自网易云样式
+// 自定义歌词样式
 class CustomLyricUI extends UINetease {
   @override
   Color getPlayingColor() => Colors.blueAccent;
