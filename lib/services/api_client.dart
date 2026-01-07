@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 
 class ApiClient {
   static const String baseUrl = 'https://lxmusicapi.onrender.com';
-  // 备选盐值参考: 'lx-music/wer.tempmusic.tk/v1' 或 'six-v2'
+  // 盐值保持不变
   static const String salt = 'lx-music/wer.tempmusic.tk/v1';
 
   static Future<dynamic> get(
@@ -15,20 +15,29 @@ class ApiClient {
   }) async {
     final url = isExternal ? Uri.parse(path) : Uri.parse('$baseUrl$path');
 
-    // --- 核心修正：尝试 path + salt 并转为大写 ---
-    final signStr = path + salt;
-    final sign = md5
-        .convert(utf8.encode(signStr))
-        .toString()
-        .toUpperCase(); // 很多 API 验证要求大写
-
-    debugPrint("======== [API 签名对比调试] ========");
-    debugPrint("🔗 URL: $url");
+    String sign = "";
     if (!isExternal) {
-      debugPrint("✍️ 拼接字符串: $signStr");
-      debugPrint("✍️ 最终生成签名 (Upper): $sign");
+      // --- 模拟野花 JS 的核心逻辑 ---
+      // 1. 提取路径中的数字和字母部分 (等同于 JS 的 /(?:\d\w)+/g)
+      final regExp = RegExp(r'(?:\d\w)+');
+      final matches = regExp.allMatches(path).map((m) => m.group(0)).toList();
+
+      // 2. 将匹配列表转为 JSON 字符串 (JS 的 JSON.stringify(matches))
+      // 注意：JS 的 JSON.stringify 对数组的处理非常严格，不能有空格
+      final jsonMatches = json.encode(matches);
+
+      // 3. 拼接盐值
+      final signStr = jsonMatches + salt;
+
+      // 4. 计算 MD5
+      sign = md5.convert(utf8.encode(signStr)).toString();
+
+      debugPrint("======== [野花算法模拟调试] ========");
+      debugPrint("🧩 提取到的 Matches: $matches");
+      debugPrint("📝 最终 SignStr: $signStr");
+      debugPrint("✍️ 生成的 Sign: $sign");
+      debugPrint("=================================");
     }
-    debugPrint("==================================");
 
     for (int attempt = 0; attempt <= retries; attempt++) {
       try {
@@ -40,23 +49,18 @@ class ApiClient {
                   : {
                       'X-Request-Key': sign,
                       'User-Agent':
-                          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) lx-music-desktop/2.0.0 Safari/537.36',
-                      'Accept': 'application/json, text/plain, */*',
-                      'X-Requested-With':
-                          'XMLHttpRequest', // 增加该 Header 模拟真实客户端
+                          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                      'X-Requested-With': 'XMLHttpRequest',
                     },
             )
-            .timeout(
-              Duration(seconds: isExternal ? 15 : 50),
-            ); // 进一步延长至 50s 确保 Render 唤醒
+            .timeout(const Duration(seconds: 40)); // 缩短单次超时，增加重试效率
 
         if (response.statusCode == 200) {
           return json.decode(response.body);
-        } else if (response.statusCode == 403) {
-          debugPrint("🚫 签名验证仍失败 [403]。如果 MD5 已对，尝试更换 Salt。");
         }
+        debugPrint("🚫 响应失败 [${response.statusCode}]: ${response.body}");
       } catch (e) {
-        debugPrint("⏳ 尝试 ${attempt + 1} 出错: $e");
+        debugPrint("⏳ 尝试 ${attempt + 1} 异常: $e");
         if (attempt == retries) rethrow;
       }
     }
