@@ -20,7 +20,7 @@ class PlayerDetailPage extends StatefulWidget {
 class _PlayerDetailPageState extends State<PlayerDetailPage>
     with SingleTickerProviderStateMixin {
   late AnimationController _rotationController;
-  bool _manualShowCover = false; // 用户是否手动切换回封面
+  bool _manualShowCover = false;
 
   @override
   void initState() {
@@ -31,7 +31,6 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
     );
     if (widget.player.playing) _rotationController.repeat();
 
-    // 监听播放状态控制旋转
     widget.player.playingStream.listen((playing) {
       if (!mounted) return;
       playing ? _rotationController.repeat() : _rotationController.stop();
@@ -56,7 +55,6 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
       valueListenable: playerController.currentSongNotifier,
       builder: (context, currentSong, _) {
         final displaySong = currentSong ?? widget.song;
-        // 自动逻辑：如果有歌词且用户没手动切封面，就显示歌词
         bool shouldShowLyrics = displaySong.lyrics != null && !_manualShowCover;
 
         return Scaffold(
@@ -75,17 +73,20 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
           ),
           body: Stack(
             children: [
-              // 1. 背景高斯模糊 (增加错误处理)
-              Container(
-                decoration: BoxDecoration(
-                  image: DecorationImage(
-                    image: NetworkImage(displaySong.cover),
+              // 1. 背景层：使用 Image.network 替代 DecorationImage 以彻底拦截日志报错
+              Positioned.fill(
+                child: Image.network(
+                  displaySong.cover,
+                  fit: BoxFit.cover,
+                  // 移除所有打印，失败时静默切换到本地默认图
+                  errorBuilder: (context, error, stackTrace) => Image.asset(
+                    'assets/images/default_cover.jpg',
                     fit: BoxFit.cover,
-                    onError: (exception, stackTrace) {
-                      debugPrint("📸 背景图加载失败");
-                    },
                   ),
                 ),
+              ),
+              // 高斯模糊层
+              Positioned.fill(
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
                   child: Container(color: Colors.black.withOpacity(0.5)),
@@ -103,6 +104,7 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
+                      textAlign: TextAlign.center,
                     ),
                     Text(
                       displaySong.artist,
@@ -114,7 +116,6 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
 
                     const Spacer(),
 
-                    // 2. 中间区域：自动切换逻辑
                     GestureDetector(
                       onTap: () =>
                           setState(() => _manualShowCover = !_manualShowCover),
@@ -128,7 +129,7 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
 
                     const Spacer(),
 
-                    // 3. 进度条
+                    // 进度条
                     StreamBuilder<Duration>(
                       stream: widget.player.positionStream,
                       builder: (context, snapshot) {
@@ -179,7 +180,7 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
                       },
                     ),
 
-                    // 4. 控制栏
+                    // 控制栏
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 30),
                       child: Row(
@@ -218,7 +219,6 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
     );
   }
 
-  // 💡 修改后的旋转封面方法，增加了加载中和错误处理逻辑
   Widget _buildRotatingCover(String url) {
     return Center(
       child: RotationTransition(
@@ -241,30 +241,22 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
             child: Image.network(
               url,
               fit: BoxFit.cover,
-              // 加载中的占位：显示一个转圈的进度条
               loadingBuilder: (context, child, loadingProgress) {
                 if (loadingProgress == null) return child;
-                return Center(
-                  child: CircularProgressIndicator(
-                    value: loadingProgress.expectedTotalBytes != null
-                        ? loadingProgress.cumulativeBytesLoaded /
-                              loadingProgress.expectedTotalBytes!
-                        : null,
-                    color: Colors.white70,
-                  ),
+                return const Center(
+                  child: CircularProgressIndicator(color: Colors.white70),
                 );
               },
-              // 错误处理：当图片 404 时显示 assets 里的默认图
+              // 失败时静默使用本地 assets 图片，不再尝试酷我无效地址
               errorBuilder: (context, error, stackTrace) {
                 return Image.asset(
                   'assets/images/default_cover.jpg',
                   fit: BoxFit.cover,
-                  // 如果 assets 图片还没加，作为最后保底，显示一个带背景色的图标
                   errorBuilder: (context, err, stack) => Container(
-                    color: Colors.blueGrey[800],
+                    color: Colors.blueGrey[900],
                     child: const Icon(
                       Icons.music_note,
-                      color: Colors.white,
+                      color: Colors.white54,
                       size: 80,
                     ),
                   ),
@@ -285,7 +277,7 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
           padding: const EdgeInsets.symmetric(horizontal: 40),
           model: LyricsModelBuilder.create().bindLyricToMain(lrc).getModel(),
           position: snapshot.data?.inMilliseconds ?? 0,
-          lyricUi: CustomLyricUI(), // 使用自定义 UI 类
+          lyricUi: CustomLyricUI(),
           playing: widget.player.playing,
           emptyBuilder: () => const Center(
             child: Text("歌词下载中...", style: TextStyle(color: Colors.white)),
@@ -296,7 +288,6 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
   }
 }
 
-// 自定义歌词样式
 class CustomLyricUI extends UINetease {
   @override
   Color getPlayingColor() => Colors.blueAccent;
