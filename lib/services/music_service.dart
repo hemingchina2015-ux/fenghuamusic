@@ -131,11 +131,18 @@ class MusicService {
       // 使用 ApiClient 请求，isExternal 为 true 不会加签名头
       final response = await ApiClient.get(fullUrl, isExternal: true);
 
+      // 💡 修复点：确保 response 是 List 且不为空
       if (response != null && response is List && response.isNotEmpty) {
-        // 优先同步歌词
-        String? synced = response[0]['syncedLyrics'];
-        if (synced != null && synced.isNotEmpty) return synced;
-        return response[0]['plainLyrics'];
+        // 访问列表的第一项 (index 应为数字 0)
+        final firstResult = response[0];
+
+        // 优先获取同步歌词，没有则获取普通歌词
+        String? lrc = firstResult['syncedLyrics'] ?? firstResult['plainLyrics'];
+
+        if (lrc != null && lrc.isNotEmpty) {
+          debugPrint("✅ 成功匹配 LRCLIB 歌词");
+          return lrc;
+        }
       }
     } catch (e) {
       debugPrint("❌ 歌词获取失败，请手动在浏览器访问测试: $fullUrl");
@@ -150,7 +157,9 @@ class MusicService {
 
     // 如果 code 为 1，说明签名 salt 需要更换
     if (response != null && response['code'] == 0) {
-      return response['data'].toString();
+      // return response['data'].toString();
+      // 💡 确保这里拿到的是 'url' 字段，而不是整个 'data'
+      return response['url']?.toString() ?? response['data']?.toString();
     }
     return null;
   }
