@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/song_model.dart';
 import 'api_client.dart';
@@ -60,17 +61,34 @@ class MusicService {
   }
 
   /// 3. 获取歌词 (核心：实现边播边下的底层支持)
-  static Future<String?> getLyrics(String source, String songId) async {
-    // 根据落雪音乐 API 规范，歌词路径通常为 /lrc/来源/ID
-    final String path = '/lrc/$source/$songId';
+  static Future<String?> getLyrics(String title, String artist) async {
+    // 对参数进行编码，防止空格和特殊字符导致 URL 崩溃
+    final query = Uri.encodeComponent('$title $artist');
+    final url = 'https://lrclib.net/api/search?q=$query';
+
     try {
-      final response = await ApiClient.get(path);
-      if (response != null && response['data'] != null) {
-        // 返回的通常是标准的 [00:00.00] 格式歌词文本
-        return response['data'].toString();
+      debugPrint("🔍 正在从 LRCLIB 搜索歌词: $title - $artist");
+
+      // 注意：这里用 http 直接请求，不经过 ApiClient (因为 LRCLIB 不需要落雪的签名)
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        List data = json.decode(response.body);
+        if (data.isNotEmpty) {
+          // 优先获取带时间轴的歌词 (syncedLyrics)
+          String? syncedLrc = data[0]['syncedLyrics'];
+          if (syncedLrc != null && syncedLrc.isNotEmpty) {
+            debugPrint("✅ 成功获取 LRCLIB 同步歌词");
+            return syncedLrc;
+          }
+          // 如果没有同步歌词，退而求其次用普通歌词
+          return data[0]['plainLyrics'];
+        }
       }
     } catch (e) {
-      debugPrint("获取歌词异常: $e");
+      debugPrint("❌ LRCLIB 歌词请求异常: $e");
     }
     return null;
   }

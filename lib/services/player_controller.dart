@@ -63,23 +63,21 @@ class PlayerController {
   /// 异步下载歌词逻辑
   Future<void> _downloadLyricsAsync(SongModel song) async {
     try {
-      debugPrint("⏳ 开始异步下载歌词: ${song.title}");
-      // 调用 MusicService 获取歌词文本
-      String? lrc = await MusicService.getLyrics(song.source, song.songId);
+      // 传入标题和歌手，而不是 ID
+      String? lrc = await MusicService.getLyrics(song.title, song.artist);
 
       if (lrc != null && lrc.isNotEmpty) {
-        song.lyrics = lrc; // 将歌词存入模型
-        debugPrint("✅ 歌词下载完成");
+        song.lyrics = lrc;
 
-        // 关键：如果下载完成时，这首歌依然是当前播放的歌，
-        // 重新给 currentSongNotifier 赋值，触发详情页 ValueListenableBuilder 刷新
+        // 刷新 UI
         if (currentSongNotifier.value?.songId == song.songId) {
-          currentSongNotifier.value = null; // 简单触发强制刷新
-          currentSongNotifier.value = song;
+          final current = currentSongNotifier.value;
+          currentSongNotifier.value = null;
+          currentSongNotifier.value = current;
         }
       }
     } catch (e) {
-      debugPrint("⚠️ 歌词下载失败: $e");
+      debugPrint("⚠️ 歌词处理失败: $e");
     }
   }
 

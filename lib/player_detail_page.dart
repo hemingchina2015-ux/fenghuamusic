@@ -240,11 +240,10 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
           padding: const EdgeInsets.symmetric(horizontal: 40),
           model: LyricsModelBuilder.create().bindLyricToMain(lrc).getModel(),
           position: snapshot.data?.inMilliseconds ?? 0,
-          // 使用我们刚定义的自定义类
-          lyricUi: CustomLyricUI(),
+          lyricUi: CustomLyricUI(), // 使用自定义 UI 类
           playing: widget.player.playing,
           emptyBuilder: () => const Center(
-            child: Text("歌词解析中...", style: TextStyle(color: Colors.white)),
+            child: Text("歌词下载中...", style: TextStyle(color: Colors.white)),
           ),
         );
       },
@@ -255,23 +254,13 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
 // 自定义歌词样式，继承自网易云样式
 class CustomLyricUI extends UINetease {
   @override
-  Color getPlayingColor() => Colors.blueAccent; // 正在播放的高亮颜色
-
+  Color getPlayingColor() => Colors.blueAccent;
   @override
-  Color getOtherMainColor() => Colors.white54; // 非播放行的颜色
-
-  @override
-  double getInlineGap() => 20.0; // 行间距
-
-  // 如果你的插件版本支持，也可以重写字体大小
+  Color getOtherMainColor() => Colors.white54;
   @override
   TextStyle getPlayingMainTextStyle() => const TextStyle(
     color: Colors.blueAccent,
     fontSize: 18,
     fontWeight: FontWeight.bold,
   );
-
-  @override
-  TextStyle getOtherMainTextStyle() =>
-      const TextStyle(color: Colors.white54, fontSize: 16);
 }
