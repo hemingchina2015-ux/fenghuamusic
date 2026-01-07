@@ -10,10 +10,18 @@ class ApiClient {
 
   static Future<dynamic> get(String path, {int retries = 1}) async {
     final url = Uri.parse('$baseUrl$path');
-
-    // 生成签名逻辑保持不变：md5(路径 + 盐值)
     final signStr = path + salt;
     final sign = md5.convert(utf8.encode(signStr)).toString();
+
+    debugPrint("DEBUG: Path=$path | Sign=$sign");
+    // --- 新增详细调试日志 ---
+    debugPrint("======== [API 签名调试] ========");
+    debugPrint("1. 请求完整 URL: $url");
+    debugPrint("2. 参与计算的路径: $path");
+    debugPrint("3. 参与计算的盐值: $salt");
+    debugPrint("4. 最终拼接字符串: $signStr");
+    debugPrint("5. 生成的 MD5 签名: $sign");
+    debugPrint("===============================");
 
     for (int attempt = 0; attempt <= retries; attempt++) {
       try {
@@ -23,20 +31,19 @@ class ApiClient {
               url,
               headers: {
                 'X-Request-Key': sign,
-                // 💡 模拟落雪音乐 PC 版真实 User-Agent
                 'User-Agent':
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) lx-music-desktop/2.0.0 Chrome/102.0.5005.167 Electron/19.0.8 Safari/537.36',
-                'Accept': '*/*',
-                'Host': 'lxmusicapi.onrender.com',
-                'Connection': 'keep-alive',
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) lx-music-desktop/2.0.0 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Referer': 'https://lxmusicapi.onrender.com/',
               },
             )
             .timeout(const Duration(seconds: 30));
 
         if (response.statusCode == 200) {
           return json.decode(response.body);
-        } else {
-          debugPrint("⚠️ API 响应异常 [${response.statusCode}]: ${response.body}");
+        } else if (response.statusCode == 403) {
+          debugPrint("🚫 403 错误：签名或权限失效。返回内容: ${response.body}");
         }
       } catch (e) {
         debugPrint("❌ 网络请求错误: $e");
