@@ -31,24 +31,23 @@ class PlayerController {
   // 核心：播放歌曲逻辑
   Future<void> playSong(SongModel song, List<SongModel> currentList) async {
     playlist = currentList;
-
-    // 1. 立即更新 UI，显示播放条
     currentSongNotifier.value = song;
     isLoadingNotifier.value = true;
 
     try {
-      // 2. 获取真正的播放地址
+      debugPrint("正在请求歌曲: ${song.title} (ID: ${song.songId})");
       String? url = await MusicService.getAudioUrl(song.source, song.songId);
 
       if (url != null && url.isNotEmpty) {
+        debugPrint("成功获取 URL: $url");
         await player.setUrl(url);
         player.play();
       } else {
-        throw Exception("无法获取播放地址");
+        throw Exception("接口返回地址为空，请检查 API Key 是否有效");
       }
     } catch (e) {
-      debugPrint("播放失败: $e");
-      // 这里可以抛出异常让 UI 层显示 SnackBar
+      debugPrint("❌ 播放逻辑捕获异常: $e");
+      // 这里的 rethrow 会传给 HomePage 的 _showError
       rethrow;
     } finally {
       isLoadingNotifier.value = false;

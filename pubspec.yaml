@@ -42,6 +42,7 @@ dependencies:
   just_audio_background: ^0.0.1-beta.11 # 必须添加这个
   flutter_lyric: ^2.0.1
   shared_preferences: ^2.0.15 # 这里使用最新的稳定版本
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:

@@ -38,9 +38,16 @@ class MusicService {
 
   // 2. 获取播放地址方法 (对应 HomePage 调用)
   static Future<String?> getAudioUrl(String source, String songId) async {
-    final response = await ApiClient.get('/url/$source/$songId/128k');
-    if (response != null && response['url'] != null) {
-      return response['url'].toString();
+    // 路径必须严格匹配 JS 逻辑: /url/kw/12345/128k
+    final String path = '/url/$source/$songId/128k';
+
+    final response = await ApiClient.get(path);
+
+    if (response != null && response['code'] == 0) {
+      // 这里的 data 可能是直接的 URL 字符串，具体看你的 API 返回格式
+      return response['data'].toString();
+    } else if (response != null && response['msg'] != null) {
+      debugPrint("API 消息: ${response['msg']}");
     }
     return null;
   }
