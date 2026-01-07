@@ -4,7 +4,8 @@ class SongModel {
   final String source;
   final String songId;
   final String cover;
-  String? lyrics; // 新增：缓存下载好的歌词
+  // 核心改动：允许动态写入歌词
+  String? lyrics;
 
   SongModel({
     required this.title,
@@ -15,17 +16,19 @@ class SongModel {
     this.lyrics,
   });
 
+  // 1. 转换为 JSON，用于收藏夹持久化（记得带上 lyrics）
   Map<String, dynamic> toJson() => {
     'title': title,
     'artist': artist,
     'source': source,
     'songId': songId,
     'cover': cover,
+    'lyrics': lyrics, // 必须保存，否则下次打开收藏夹歌词就没了
   };
 
-  // 专门处理酷我搜索结果的工厂构造函数
+  // 2. 你的核心逻辑：专门处理酷我搜索结果，包含字符清洗和封面逻辑
   factory SongModel.fromKuwo(Map<String, dynamic> item) {
-    // 1. 清洗歌名和歌手名中的转义字符
+    // 保留你的逻辑：清洗歌名和歌手名中的转义字符
     String cleanTitle = (item['SONGNAME'] ?? '未知')
         .toString()
         .replaceAll("&nbsp;", " ")
@@ -36,10 +39,10 @@ class SongModel {
         .replaceAll("&nbsp;", " ")
         .replaceAll("&amp;", "&");
 
-    // 2. 处理歌曲 ID (移除 MUSIC_ 前缀)
+    // 保留你的逻辑：处理歌曲 ID (移除 MUSIC_ 前缀)
     String rid = (item['MUSICRID'] ?? '').toString().replaceAll('MUSIC_', '');
 
-    // 3. 处理封面图逻辑 (如果 albumId 为 0 或为空，使用默认图)
+    // 保留你的逻辑：处理封面图逻辑
     String albumId = item['ALBUMID']?.toString() ?? "";
     String coverUrl = "https://img1.kuwo.cn/star/albumcover/500/default.jpg";
     if (albumId.isNotEmpty && albumId != "0") {
@@ -55,18 +58,7 @@ class SongModel {
     );
   }
 
-  // factory SongModel.fromJson(Map<String, dynamic> json, String src) {
-  //   return SongModel(
-  //     title: (json['name'] ?? json['title'] ?? '未知歌曲').toString(),
-  //     artist: (json['artist'] ?? json['singer'] ?? '未知歌手').toString(),
-  //     source: src,
-  //     songId: (json['songmid'] ?? json['hash'] ?? json['id']).toString(),
-  //     cover:
-  //         json['img'] ??
-  //         "https://p2.music.126.net/6y-UleORpfX7nz69VovZog==/109951163431936628.jpg",
-  //   );
-  // }
-
+  // 3. 从 JSON（收藏夹）恢复模型
   factory SongModel.fromJson(Map<String, dynamic> json) {
     return SongModel(
       title: json['title'] ?? '未知',
@@ -74,15 +66,7 @@ class SongModel {
       source: json['source'] ?? 'kw',
       songId: json['songId']?.toString() ?? '',
       cover: json['cover'] ?? '',
-      lyrics: json['lyrics'],
+      lyrics: json['lyrics'], // 恢复缓存的歌词
     );
   }
-
-  // factory SongModel.fromJson(Map<String, dynamic> json) => SongModel(
-  //   title: json['title'],
-  //   artist: json['artist'],
-  //   source: json['source'],
-  //   songId: json['songId'],
-  //   cover: json['cover'],
-  // );
 }

@@ -1,13 +1,15 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_lyric/lyrics_reader_model.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:flutter_lyric/lyrics_reader.dart';
 import 'models/song_model.dart';
 import 'services/player_controller.dart';
 import 'widgets/player_buttons.dart';
 
 class PlayerDetailPage extends StatefulWidget {
   final AudioPlayer player;
-  final SongModel song; // 初始传入的歌曲
+  final SongModel song;
 
   const PlayerDetailPage({super.key, required this.player, required this.song});
 
@@ -18,7 +20,7 @@ class PlayerDetailPage extends StatefulWidget {
 class _PlayerDetailPageState extends State<PlayerDetailPage>
     with SingleTickerProviderStateMixin {
   late AnimationController _rotationController;
-  bool _showLyrics = false;
+  bool _manualShowCover = false; // 用户是否手动切换回封面
 
   @override
   void initState() {
@@ -27,19 +29,12 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
       duration: const Duration(seconds: 20),
       vsync: this,
     );
-
-    if (widget.player.playing) {
-      _rotationController.repeat();
-    }
+    if (widget.player.playing) _rotationController.repeat();
 
     // 监听播放状态控制旋转
     widget.player.playingStream.listen((playing) {
       if (!mounted) return;
-      if (playing) {
-        _rotationController.repeat();
-      } else {
-        _rotationController.stop();
-      }
+      playing ? _rotationController.repeat() : _rotationController.stop();
     });
   }
 
@@ -49,7 +44,6 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
     super.dispose();
   }
 
-  // 时间格式化工具方法
   String _formatDuration(Duration d) {
     final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -58,13 +52,12 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
 
   @override
   Widget build(BuildContext context) {
-    // 关键：使用 ValueListenableBuilder 监听全局当前歌曲
-    // 这样在详情页切歌时，封面和文字会自动刷新
     return ValueListenableBuilder<SongModel?>(
       valueListenable: playerController.currentSongNotifier,
       builder: (context, currentSong, _) {
-        // 如果控制器里没歌（异常情况），则使用进入页面时传入的歌
         final displaySong = currentSong ?? widget.song;
+        // 自动逻辑：如果有歌词且用户没手动切封面，就显示歌词
+        bool shouldShowLyrics = displaySong.lyrics != null && !_manualShowCover;
 
         return Scaffold(
           extendBodyBehindAppBar: true,
@@ -92,16 +85,14 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
                 ),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
-                  child: Container(color: Colors.black.withOpacity(0.4)),
+                  child: Container(color: Colors.black.withOpacity(0.5)),
                 ),
               ),
 
-              // 2. 主体内容
               SafeArea(
                 child: Column(
                   children: [
                     const SizedBox(height: 20),
-                    // 歌曲信息
                     Text(
                       displaySong.title,
                       style: const TextStyle(
@@ -109,67 +100,32 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 8),
                     Text(
                       displaySong.artist,
                       style: const TextStyle(
                         fontSize: 16,
                         color: Colors.white70,
                       ),
-                      textAlign: TextAlign.center,
                     ),
 
                     const Spacer(),
 
-                    // 3. 封面旋转部分
+                    // 2. 中间区域：自动切换逻辑
                     GestureDetector(
-                      onTap: () => setState(() => _showLyrics = !_showLyrics),
-                      child: Center(
-                        child: RotationTransition(
-                          turns: _rotationController,
-                          child: Container(
-                            width: 280,
-                            height: 280,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white10,
-                                width: 12,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.5),
-                                  blurRadius: 20,
-                                  spreadRadius: 5,
-                                ),
-                              ],
-                            ),
-                            child: ClipOval(
-                              child: Image.network(
-                                displaySong.cover,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, _, __) => Container(
-                                  color: Colors.grey[900],
-                                  child: const Icon(
-                                    Icons.music_note,
-                                    size: 80,
-                                    color: Colors.white24,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                      onTap: () =>
+                          setState(() => _manualShowCover = !_manualShowCover),
+                      child: SizedBox(
+                        height: 320,
+                        child: shouldShowLyrics
+                            ? _buildLyricView(displaySong.lyrics!)
+                            : _buildRotatingCover(displaySong.cover),
                       ),
                     ),
 
                     const Spacer(),
 
-                    // 4. 进度条
+                    // 3. 进度条
                     StreamBuilder<Duration>(
                       stream: widget.player.positionStream,
                       builder: (context, snapshot) {
@@ -183,11 +139,11 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
                               inactiveColor: Colors.white24,
                               value: position.inMilliseconds.toDouble(),
                               max: duration.inMilliseconds.toDouble().clamp(
-                                0,
+                                0.01,
                                 double.infinity,
                               ),
-                              onChanged: (value) => widget.player.seek(
-                                Duration(milliseconds: value.toInt()),
+                              onChanged: (v) => widget.player.seek(
+                                Duration(milliseconds: v.toInt()),
                               ),
                             ),
                             Padding(
@@ -196,7 +152,7 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
                               ),
                               child: Row(
                                 mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween, // 修正拼写错误
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
                                     _formatDuration(position),
@@ -220,39 +176,35 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
                       },
                     ),
 
-                    // 5. 控制按钮栏
+                    // 4. 控制栏
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 30),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          PlayModeButton(player: widget.player, size: 28),
+                          PlayModeButton(player: widget.player),
                           ControlButton(
                             icon: Icons.skip_previous_rounded,
                             size: 45,
                             onTap: () => playerController.playPrevious(),
                           ),
-                          // 使用监听了加载状态的播放按钮
                           ValueListenableBuilder<bool>(
                             valueListenable: playerController.isLoadingNotifier,
-                            builder: (context, loading, _) {
-                              return PlayPauseButton(
-                                player: widget.player,
-                                isLoading: loading,
-                                size: 75,
-                              );
-                            },
+                            builder: (context, loading, _) => PlayPauseButton(
+                              player: widget.player,
+                              isLoading: loading,
+                              size: 75,
+                            ),
                           ),
                           ControlButton(
                             icon: Icons.skip_next_rounded,
                             size: 45,
                             onTap: () => playerController.playNext(),
                           ),
-                          FavoriteButton(song: displaySong, size: 28),
+                          FavoriteButton(song: displaySong),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
                   ],
                 ),
               ),
@@ -262,4 +214,64 @@ class _PlayerDetailPageState extends State<PlayerDetailPage>
       },
     );
   }
+
+  Widget _buildRotatingCover(String url) {
+    return Center(
+      child: RotationTransition(
+        turns: _rotationController,
+        child: Container(
+          width: 260,
+          height: 260,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white10, width: 8),
+          ),
+          child: ClipOval(child: Image.network(url, fit: BoxFit.cover)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLyricView(String lrc) {
+    return StreamBuilder<Duration>(
+      stream: widget.player.positionStream,
+      builder: (context, snapshot) {
+        return LyricsReader(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          model: LyricsModelBuilder.create().bindLyricToMain(lrc).getModel(),
+          position: snapshot.data?.inMilliseconds ?? 0,
+          // 使用我们刚定义的自定义类
+          lyricUi: CustomLyricUI(),
+          playing: widget.player.playing,
+          emptyBuilder: () => const Center(
+            child: Text("歌词解析中...", style: TextStyle(color: Colors.white)),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// 自定义歌词样式，继承自网易云样式
+class CustomLyricUI extends UINetease {
+  @override
+  Color getPlayingColor() => Colors.blueAccent; // 正在播放的高亮颜色
+
+  @override
+  Color getOtherMainColor() => Colors.white54; // 非播放行的颜色
+
+  @override
+  double getInlineGap() => 20.0; // 行间距
+
+  // 如果你的插件版本支持，也可以重写字体大小
+  @override
+  TextStyle getPlayingMainTextStyle() => const TextStyle(
+    color: Colors.blueAccent,
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+  );
+
+  @override
+  TextStyle getOtherMainTextStyle() =>
+      const TextStyle(color: Colors.white54, fontSize: 16);
 }
